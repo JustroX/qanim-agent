@@ -1,17 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const behaviour_1 = require("../../behaviour");
-const vector_1 = require("../../lib/vector");
-class MotionBehaviour extends behaviour_1.Behaviour {
+class Warp extends behaviour_1.Behaviour {
     constructor() {
         super();
-        this.onBirth((state) => {
-            const { acceleration, velocity } = state.getAll();
-            if (!acceleration)
-                state.set('acceleration', new vector_1.Vector2(0, 0));
-            if (!velocity)
-                state.set('velocity', new vector_1.Vector2(0, 0));
-        });
         this.onUpdate((state, dt) => {
             if (!dt)
                 return;
@@ -23,9 +15,9 @@ class MotionBehaviour extends behaviour_1.Behaviour {
             }
             const { acceleration, velocity, transform } = state.getAll();
             const { position } = transform;
-            position.add(velocity.mulImm(dt));
-            velocity.add(acceleration.mulImm(dt));
+            position.x = (position.x + WIDTH) % WIDTH;
+            position.y = (position.y + HEIGHT) % HEIGHT;
         });
     }
 }
-exports.MotionBehaviour = MotionBehaviour;
+exports.Warp = Warp;

@@ -15,7 +15,7 @@ class Agent {
 }
 exports.Agent = Agent;
 
-},{"./appearance":2,"./behaviour":3,"./state":12,"uuid":14}],2:[function(require,module,exports){
+},{"./appearance":2,"./behaviour":3,"./state":16,"uuid":18}],2:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 class Appearance {
@@ -86,7 +86,28 @@ class Behaviour {
 }
 exports.Behaviour = Behaviour;
 
-},{"uuid":14}],4:[function(require,module,exports){
+},{"uuid":18}],4:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const agent_1 = require("../../agent");
+const imageAppearance_1 = require("../appearance/imageAppearance");
+const boidBehaviour_1 = require("../behaviour/boidBehaviour");
+const boids_1 = require("../meta/boids");
+class BoidAgent extends agent_1.Agent {
+    constructor() {
+        super();
+        this.behaviour = new boidBehaviour_1.BoidBehaviour();
+        this.appearance = new imageAppearance_1.ImageAppearance();
+        boids_1.BOIDS.push(this);
+    }
+    setMotion(newVelocity) {
+        const { velocity } = this.state.getAll();
+        velocity.set(newVelocity);
+    }
+}
+exports.BoidAgent = BoidAgent;
+
+},{"../../agent":1,"../appearance/imageAppearance":6,"../behaviour/boidBehaviour":7,"../meta/boids":10}],5:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const agent_1 = require("../../agent");
@@ -105,7 +126,7 @@ class MechanicalAgent extends agent_1.Agent {
 }
 exports.MechanicalAgent = MechanicalAgent;
 
-},{"../../agent":1,"../appearance/imageAppearance":5,"../behaviour/motionBehaviour":6}],5:[function(require,module,exports){
+},{"../../agent":1,"../appearance/imageAppearance":6,"../behaviour/motionBehaviour":8}],6:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const appearance_1 = require("../../appearance");
@@ -136,7 +157,161 @@ class ImageAppearance extends appearance_1.Appearance {
 }
 exports.ImageAppearance = ImageAppearance;
 
-},{"../../appearance":2}],6:[function(require,module,exports){
+},{"../../appearance":2}],7:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const motionBehaviour_1 = require("./motionBehaviour");
+const behaviour_1 = require("../../behaviour");
+const vector_1 = require("../../lib/vector");
+const boids_1 = require("../meta/boids");
+const wrapBehaviour_1 = require("./wrapBehaviour");
+class CohesionBehaviour extends behaviour_1.Behaviour {
+    constructor() {
+        super();
+        this.onUpdate((state, dt) => {
+            const { position } = state.getTransform();
+            const velocity = state.get('velocity');
+            const target = this.targetPosition(position, velocity);
+            const dx = target.sub(position);
+            const distance = dx.mag();
+            const speed = Math.min(distance, 100);
+            if (distance > 0) {
+                dx.normalize().mul(speed);
+                state.get('velocity').add(dx);
+            }
+        });
+    }
+    isInFront(myPosition, myDirection, position) {
+        const dx = myPosition.sub(position);
+        const heading = dx.normalize();
+        if (myDirection.magRel() == 0)
+            return true;
+        const directon = myDirection.normalizeImm();
+        const delta = directon.sub(heading);
+        return delta.x >= 0;
+    }
+    targetPosition(myPosition, myVelocity) {
+        const distance = boids_1.VISION_RADIUS * boids_1.VISION_RADIUS;
+        const nearMe = boids_1.BOIDS.filter(boid => {
+            const { position } = boid.state.getTransform();
+            if (position == myPosition)
+                return false;
+            const dx = myPosition.sub(position);
+            return dx.magRel() <= distance && this.isInFront(myPosition, myVelocity, position);
+        });
+        const v = new vector_1.Vector2(0, 0);
+        nearMe.forEach(boid => {
+            const { position } = boid.state.getTransform();
+            v.add(position);
+        });
+        if (nearMe.length)
+            return v.div(nearMe.length);
+        return myPosition;
+    }
+}
+class AlignmentBehaviour extends behaviour_1.Behaviour {
+    constructor() {
+        super();
+        this.onUpdate((state, dt) => {
+            const { position } = state.getTransform();
+            const velocity = state.get('velocity');
+            const dx = this.flockSpeed(position, velocity);
+            const distance = dx.mag();
+            const speed = Math.min(distance, 30);
+            if (distance > 0) {
+                state.get('velocity').add(dx.normalize().mul(2 * speed));
+            }
+        });
+    }
+    isInFront(myPosition, myDirection, position) {
+        const dx = myPosition.sub(position);
+        const heading = dx.normalize();
+        if (myDirection.magRel() == 0)
+            return true;
+        const directon = myDirection.normalizeImm();
+        const delta = directon.sub(heading);
+        return delta.x >= 0;
+    }
+    flockSpeed(myPosition, myVelocity) {
+        const distance = boids_1.VISION_RADIUS * boids_1.VISION_RADIUS;
+        const nearMe = boids_1.BOIDS.filter(boid => {
+            const { position } = boid.state.getTransform();
+            if (position == myPosition)
+                return false;
+            const dx = myPosition.sub(position);
+            return dx.magRel() <= distance && this.isInFront(myPosition, myVelocity, position);
+        });
+        const v = new vector_1.Vector2(0, 0);
+        nearMe.forEach(boid => {
+            const velocity = boid.state.get('velocity');
+            v.add(velocity);
+        });
+        if (nearMe.length)
+            return v.div(nearMe.length);
+        return v;
+    }
+}
+class AvoidanceBehaviour extends behaviour_1.Behaviour {
+    constructor() {
+        super();
+        this.onUpdate((state, dt) => {
+            const { position } = state.getTransform();
+            const dx = this.separationForce(position);
+            const distance = dx.mag();
+            const speed = Math.min(10 * distance, 30);
+            if (distance > 0) {
+                dx.normalize().mul(-2 * speed);
+                state.get('velocity').add(dx);
+            }
+        });
+    }
+    separationForce(myPosition) {
+        const distance = 30 * 30;
+        const nearMe = boids_1.BOIDS.filter(boid => {
+            const { position } = boid.state.getTransform();
+            if (position == myPosition)
+                return false;
+            const dx = myPosition.sub(position);
+            return dx.magRel() <= distance;
+        });
+        const v = new vector_1.Vector2(0, 0);
+        nearMe.forEach(boid => {
+            const { position } = boid.state.getTransform();
+            v.add(position.sub(myPosition));
+        });
+        if (nearMe.length)
+            return v.div(nearMe.length);
+        return v;
+    }
+}
+class BoidBehaviour extends motionBehaviour_1.MotionBehaviour {
+    constructor() {
+        super();
+        let prev = new vector_1.Vector2(0, 0);
+        this.addChildren(new behaviour_1.Behaviour((state, dt) => {
+            const velocity = state.get('velocity');
+            prev.set(velocity);
+            velocity.set(0, 0);
+        }), new CohesionBehaviour(), new AvoidanceBehaviour(), new AlignmentBehaviour(), new behaviour_1.Behaviour((state, dt) => {
+            const velocity = state.get('velocity');
+            const acceleration = state.get('acceleration');
+            const speed = Math.min(velocity.mag(), 100);
+            if (speed != 0)
+                acceleration.set(velocity.normalizeImm().mul(50 * speed));
+            const v = Math.min(prev.mag(), 80);
+            prev.normalize().mul(v);
+            velocity.set(prev);
+            // if(speed!=0) {
+            // 	prev.add(velocity);
+            // 	prev.normalize();
+            // 	prev.mul(10*speed);
+            // }
+        }), new wrapBehaviour_1.WrapBehaviour());
+    }
+}
+exports.BoidBehaviour = BoidBehaviour;
+
+},{"../../behaviour":3,"../../lib/vector":14,"../meta/boids":10,"./motionBehaviour":8,"./wrapBehaviour":9}],8:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const behaviour_1 = require("../../behaviour");
@@ -154,22 +329,53 @@ class MotionBehaviour extends behaviour_1.Behaviour {
         this.onUpdate((state, dt) => {
             if (!dt)
                 return;
-            const { acceleration, velocity, transform } = state.getAll();
-            const { position } = transform;
-            position.add(velocity.mulImm(dt));
-            velocity.add(acceleration.mulImm(dt));
             let child = this.childFirst;
             while (child) {
                 if (child.update)
                     child.update(state, dt);
                 child = child.next;
             }
+            const { acceleration, velocity, transform } = state.getAll();
+            const { position } = transform;
+            position.add(velocity.mulImm(dt));
+            velocity.add(acceleration.mulImm(dt));
         });
     }
 }
 exports.MotionBehaviour = MotionBehaviour;
 
-},{"../../behaviour":3,"../../lib/vector":10}],7:[function(require,module,exports){
+},{"../../behaviour":3,"../../lib/vector":14}],9:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const behaviour_1 = require("../../behaviour");
+class WrapBehaviour extends behaviour_1.Behaviour {
+    constructor() {
+        super();
+        this.onUpdate((state, dt) => {
+            if (!dt)
+                return;
+            let child = this.childFirst;
+            while (child) {
+                if (child.update)
+                    child.update(state, dt);
+                child = child.next;
+            }
+            const { acceleration, velocity, transform } = state.getAll();
+            const { position } = transform;
+            position.x = (position.x + WIDTH) % WIDTH;
+            position.y = (position.y + HEIGHT) % HEIGHT;
+        });
+    }
+}
+exports.WrapBehaviour = WrapBehaviour;
+
+},{"../../behaviour":3}],10:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BOIDS = [];
+exports.VISION_RADIUS = 100;
+
+},{}],11:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var qanim_1 = require("./qanim");
@@ -188,6 +394,8 @@ var motionBehaviour_1 = require("./class/behaviour/motionBehaviour");
 exports.MotionBehaviour = motionBehaviour_1.MotionBehaviour;
 var mechanicalAgent_1 = require("./class/agent/mechanicalAgent");
 exports.MechanicalAgent = mechanicalAgent_1.MechanicalAgent;
+var boidAgent_1 = require("./class/agent/boidAgent");
+exports.BoidAgent = boidAgent_1.BoidAgent;
 var matrix_1 = require("./lib/matrix");
 exports.Matrix = matrix_1.Matrix;
 var transform_1 = require("./lib/transform");
@@ -195,7 +403,7 @@ exports.Transform = transform_1.Transform;
 var vector_1 = require("./lib/vector");
 exports.Vector2 = vector_1.Vector2;
 
-},{"./agent":1,"./appearance":2,"./behaviour":3,"./class/agent/mechanicalAgent":4,"./class/appearance/imageAppearance":5,"./class/behaviour/motionBehaviour":6,"./lib/matrix":8,"./lib/transform":9,"./lib/vector":10,"./qanim":11,"./state":12}],8:[function(require,module,exports){
+},{"./agent":1,"./appearance":2,"./behaviour":3,"./class/agent/boidAgent":4,"./class/agent/mechanicalAgent":5,"./class/appearance/imageAppearance":6,"./class/behaviour/motionBehaviour":8,"./lib/matrix":12,"./lib/transform":13,"./lib/vector":14,"./qanim":15,"./state":16}],12:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 class Matrix {
@@ -207,7 +415,7 @@ class Matrix {
 }
 exports.Matrix = Matrix;
 
-},{}],9:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const vector_1 = require("./vector");
@@ -218,7 +426,7 @@ class Transform {
 }
 exports.Transform = Transform;
 
-},{"./vector":10}],10:[function(require,module,exports){
+},{"./vector":14}],14:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 class Vector2 {
@@ -245,6 +453,8 @@ class Vector2 {
             this.coords[1] = x.coords[1];
         }
         else {
+            if (y === undefined)
+                throw new Error('Missing Parameter');
             this.coords[0] = x;
             this.coords[1] = y;
         }
@@ -277,6 +487,8 @@ class Vector2 {
         return this;
     }
     div(p) {
+        if (p == 0)
+            throw new Error('Can not divide vector by 0.');
         this.coords[0] /= p;
         this.coords[1] /= p;
         return this;
@@ -285,10 +497,15 @@ class Vector2 {
         return new Vector2(this.coords[0] * p, this.coords[1] * p);
     }
     divImm(p) {
+        if (p == 0)
+            throw new Error('Can not divide vector by 0.');
         return new Vector2(this.coords[0] / p, this.coords[1] / p);
     }
     mag() {
         return Math.sqrt(this.x * this.x + this.y * this.y);
+    }
+    magRel() {
+        return this.x * this.x + this.y * this.y;
     }
     normalize() {
         const mag = this.mag();
@@ -301,7 +518,7 @@ class Vector2 {
 }
 exports.Vector2 = Vector2;
 
-},{}],11:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const state_1 = require("./state");
@@ -406,7 +623,7 @@ class Qanim {
 }
 exports.Qanim = Qanim;
 
-},{"./behaviour":3,"./state":12}],12:[function(require,module,exports){
+},{"./behaviour":3,"./state":16}],16:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const transform_1 = require("./lib/transform");
@@ -438,7 +655,7 @@ class State {
 }
 exports.State = State;
 
-},{"./lib/transform":9}],13:[function(require,module,exports){
+},{"./lib/transform":13}],17:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -466,7 +683,7 @@ function bytesToUuid(buf, offset) {
 var _default = bytesToUuid;
 exports.default = _default;
 module.exports = exports.default;
-},{}],14:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -506,7 +723,7 @@ var _v3 = _interopRequireDefault(require("./v4.js"));
 var _v4 = _interopRequireDefault(require("./v5.js"));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-},{"./v1.js":18,"./v3.js":19,"./v4.js":21,"./v5.js":22}],15:[function(require,module,exports){
+},{"./v1.js":22,"./v3.js":23,"./v4.js":25,"./v5.js":26}],19:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -732,7 +949,7 @@ function md5ii(a, b, c, d, x, s, t) {
 var _default = md5;
 exports.default = _default;
 module.exports = exports.default;
-},{}],16:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -756,7 +973,7 @@ function rng() {
 }
 
 module.exports = exports.default;
-},{}],17:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -853,7 +1070,7 @@ function sha1(bytes) {
 var _default = sha1;
 exports.default = _default;
 module.exports = exports.default;
-},{}],18:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -962,7 +1179,7 @@ function v1(options, buf, offset) {
 var _default = v1;
 exports.default = _default;
 module.exports = exports.default;
-},{"./bytesToUuid.js":13,"./rng.js":16}],19:[function(require,module,exports){
+},{"./bytesToUuid.js":17,"./rng.js":20}],23:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -980,7 +1197,7 @@ const v3 = (0, _v.default)('v3', 0x30, _md.default);
 var _default = v3;
 exports.default = _default;
 module.exports = exports.default;
-},{"./md5.js":15,"./v35.js":20}],20:[function(require,module,exports){
+},{"./md5.js":19,"./v35.js":24}],24:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1050,7 +1267,7 @@ function _default(name, version, hashfunc) {
   generateUUID.URL = URL;
   return generateUUID;
 }
-},{"./bytesToUuid.js":13}],21:[function(require,module,exports){
+},{"./bytesToUuid.js":17}],25:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1092,7 +1309,7 @@ function v4(options, buf, offset) {
 var _default = v4;
 exports.default = _default;
 module.exports = exports.default;
-},{"./bytesToUuid.js":13,"./rng.js":16}],22:[function(require,module,exports){
+},{"./bytesToUuid.js":17,"./rng.js":20}],26:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1110,5 +1327,5 @@ const v5 = (0, _v.default)('v5', 0x50, _sha.default);
 var _default = v5;
 exports.default = _default;
 module.exports = exports.default;
-},{"./sha1.js":17,"./v35.js":20}]},{},[7])(7)
+},{"./sha1.js":21,"./v35.js":24}]},{},[11])(11)
 });

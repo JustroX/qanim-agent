@@ -7,6 +7,7 @@ export { State } from './state';
 export { ImageAppearance } from './class/appearance/imageAppearance';
 export { MotionBehaviour } from './class/behaviour/motionBehaviour';
 export { MechanicalAgent } from './class/agent/mechanicalAgent';
+export { BoidAgent } from './class/agent/boidAgent';
 
 export {Matrix} from './lib/matrix';
 export {Transform} from './lib/transform';

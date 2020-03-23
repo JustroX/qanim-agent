@@ -21,12 +21,14 @@ export class Vector2{
 		this.coords[1] = val;
 	}
 
-	set(x: number | Vector2, y: number) {
+	set(x: number | Vector2, y?: number) {
 		if(x instanceof Vector2) {
 			this.coords[0] = x.coords[0];
 			this.coords[1] = x.coords[1];
 		}
 		else {
+			if(y===undefined) throw new Error('Missing Parameter');
+			
 			this.coords[0] = x;
 			this.coords[1] = y;
 		}
@@ -63,6 +65,9 @@ export class Vector2{
 	}
 
 	div(p: number) {
+		if(p==0)
+			throw new Error('Can not divide vector by 0.');
+			
 		this.coords[0] /= p;
 		this.coords[1] /= p;
 		return this;
@@ -73,11 +78,18 @@ export class Vector2{
 	}
 
 	divImm(p: number) {
+		if(p==0)
+			throw new Error('Can not divide vector by 0.');
+			
 		return new Vector2(this.coords[0]/p, this.coords[1]/p);
 	}
 
 	mag() {
 		return Math.sqrt(this.x*this.x + this.y*this.y);
+	}
+
+	magRel() {
+		return this.x*this.x + this.y*this.y;
 	}
 
 	normalize() {

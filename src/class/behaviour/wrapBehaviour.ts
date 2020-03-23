@@ -2,6 +2,8 @@ import { Behaviour } from '../../behaviour';
 import { Vector2 } from '../../lib/vector';
 import { Transform } from '../../lib/transform';
 
+declare const WIDTH: number;
+declare const HEIGHT: number;
 
 interface MotionState {
 	transform: Transform,
@@ -10,21 +12,9 @@ interface MotionState {
 }
 
 
-export class MotionBehaviour extends Behaviour {
+export class WrapBehaviour extends Behaviour {
 	constructor(){
 		super();
-		this.onBirth((state)=>{
-			const { 
-				acceleration,
-				velocity
-			} = state.getAll();
-			
-			if(!acceleration)
-				state.set('acceleration',new Vector2(0,0));
-			if(!velocity)
-				state.set('velocity',new Vector2(0,0));
-		});
-
 		this.onUpdate((state, dt)=>{
 			if(!dt) return;
 
@@ -42,9 +32,8 @@ export class MotionBehaviour extends Behaviour {
 			} = state.getAll() as MotionState;
 
 			const { position } = transform as Transform;
-			position.add( velocity.mulImm(dt) );
-			velocity.add( acceleration.mulImm(dt) );
-
+			position.x = ( position.x +  WIDTH ) % WIDTH;
+			position.y = ( position.y + HEIGHT )% HEIGHT;
 		});
 	}
 }
